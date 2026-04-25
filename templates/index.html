@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Minesweeper - Main Menu</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .menu-wrapper {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-top: 50px;
+            max-width: 500px;
+            width: 90%;
+        }
+        .difficulty-options, .mode-options {
+            margin: 25px 0;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .difficulty-btn.selected {
+            background: #1e90ff;
+            color: white;
+            box-shadow: 0 0 15px rgba(30, 144, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+
+<div class="menu-wrapper">
+    <h1>MINESWEEPER</h1>
+    <p>CHOOSE YOUR CHALLENGE</p>
+
+    <div class="difficulty-options">
+        <button class="btn difficulty-btn selected" onclick="setDiff('easy', this)">Easy (5x5)</button>
+        <button class="btn difficulty-btn" onclick="setDiff('medium', this)">Medium (7x7)</button>
+        <button class="btn difficulty-btn" onclick="setDiff('hard', this)">Hard (8x8)</button>
+    </div>
+
+    <hr style="opacity: 0.2; margin: 30px 0;">
+
+    <div class="mode-options">
+        <button class="btn btn-primary" style="padding: 15px 30px; font-size: 1.2rem;" onclick="goToUser()">USER PLAY</button>
+        <button class="btn btn-success" style="padding: 15px 30px; font-size: 1.2rem;" onclick="goToAI()">AI SOLVER</button>
+    </div>
+</div>
+
+<script>
+let difficulty = 'easy';
+
+function setDiff(level, el) {
+    difficulty = level;
+    document.querySelectorAll('.difficulty-btn').forEach(btn => btn.classList.remove('selected'));
+    el.classList.add('selected');
+}
+
+function goToUser() {
+    window.location.href = `/user?difficulty=${difficulty}`;
+}
+
+function goToAI() {
+    window.location.href = `/ai?difficulty=${difficulty}`;
+}
+</script>
+
+</body>
+</html>

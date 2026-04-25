@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Minesweeper - AI State Space</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+    <a href="/" class="btn btn-back">Back to Menu</a>
+
+    <div class="title-container">
+        <h1>Minesweeper Solver using Constraint Satisfaction Problem(CSP)</h1>
+    </div>
+
+    <!-- On-Screen Status Message (Top of Screen) -->
+    <div id="status-overlay" class="status-overlay hidden">
+        <div id="status-message"></div>
+        <button class="btn btn-reset" onclick="newGame()">Play Again</button>
+    </div>
+
+    <div class="game-container">
+        <div class="board-wrapper">
+            <div class="stats-panel">
+                <span>Mines: <span id="mineCount">00</span></span>
+                <span>Time: <span id="timer">000</span></span>
+            </div>
+
+            <div id="board"></div>
+
+            <div class="controls" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px;">
+                <button class="btn btn-primary" onclick="aiMove()">Next AI Move</button>
+                <button class="btn btn-success" onclick="autoPlay()">Auto Solve</button>
+                <button class="btn btn-danger" onclick="stopAuto()">Stop</button>
+                <button class="btn btn-reset" onclick="newGame()">Reset Board</button>
+            </div>
+        </div>
+
+        <div id="graph-container">
+            <h3>AI Branching Search Tree</h3>
+            <div id="steps" style="margin-bottom: 20px;">
+                <i>AI waiting...</i>
+            </div>
+            <div id="state-visual" class="branching-container">
+                
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let gameId = null;
+        let timer = 0;
+        let timerInterval;
+        let autoPlaying = false;
+        let difficulty = '{{ difficulty }}';
+        let gameOver = false;
+
+        function updateBoard(state) {
+            const boardDiv = document.getElementById("board");
+            boardDiv.innerHTML = "";
+            const rows = state.length;
+            const cols = state[0].length;
+
+            for (let i = 0; i < rows; i++) {
+                let row = document.createElement("div");
+                row.classList.add("row");
+                for (let j = 0; j < cols; j++) {
+                    let cell = document.createElement("div");
+                    cell.classList.add("cell");
+
+                    let val = state[i][j];
+                    if (val === 'F') {
+                        cell.innerText = "🚩";
+                        cell.classList.add("flagged");
+                    } else if (val === 'M') {
+                        cell.innerText = "💣";
+                        cell.classList.add("mine", "revealed");
+                    } else if (val !== '?') {
+                        cell.innerText = val === '0' ? "" : val;
+                        cell.classList.add("revealed");
+                        if (val > 0) cell.classList.add(`n${val}`);
+                    }
+                    row.appendChild(cell);
+                }
+                boardDiv.appendChild(row);
+            }
+        }
+
+        function createMiniGrid(grid) {
+            const miniGrid = document.createElement("div");
+            miniGrid.classList.add("mini-grid");
+            grid.forEach(row => {
+                const gridRow = document.createElement("div");
+                gridRow.classList.add("mini-row");
+                row.forEach(val => {
+                    const cell = document.createElement("div");
+                    cell.classList.add("mini-cell");
+
+                    if (val === 'F' || val === '🚩') cell.innerText = "🚩";
+                    else if (val === 'M' || val === '💣') cell.innerText = "💣";
+                    else if (val === 'M_HYP') {
+                        cell.innerText = "💣";
+                        cell.classList.add("mini-hyp-mine");
+                    } else if (val === 'S_HYP') {
+                        cell.innerText = "✓";
+                        cell.classList.add("mini-hyp-safe");
+                    } else if (val === '✅') {
+                        cell.innerText = "✅";
+                        cell.classList.add("mini-decision");
+                    } else if (val !== '?') {
+                        cell.innerText = val === '0' ? "" : val;
+                        cell.classList.add("mini-revealed");
+                        if (val > 0) cell.classList.add(`n${val}`);
+                    }
+                    gridRow.appendChild(cell);
+                });
+                miniGrid.appendChild(gridRow);
+            });
+            return miniGrid;
+        }
+
+        function renderBranchingGraph(graph) {
+            const container = document.getElementById("state-visual");
+            container.innerHTML = "";
+            if (!graph || !graph.frontier) return;
+
+            // 1. Frontier Node
+            const frontierNode = document.createElement("div");
+            frontierNode.classList.add("state-node", "frontier-node");
+            frontierNode.innerHTML = `<div class="state-label">${graph.frontier.label}</div>`;
+            frontierNode.appendChild(createMiniGrid(graph.frontier.grid));
+            container.appendChild(frontierNode);
+
+            // 2. Branching Candidates
+            if (graph.candidates && graph.candidates.length > 0) {
+                const arrowDown = document.createElement("div");
+                arrowDown.classList.add("state-arrow");
+                arrowDown.innerText = "↓ CONSIDERING POSSIBILITIES ↓";
+                container.appendChild(arrowDown);
+
+                const candidatesWrapper = document.createElement("div");
+                candidatesWrapper.classList.add("candidates-wrapper");
+
+                graph.candidates.forEach(cand => {
+                    const candNode = document.createElement("div");
+                    candNode.classList.add("state-node", "cand-node");
+                    candNode.innerHTML = `<div class="state-label">${cand.label}</div>`;
+                    candNode.appendChild(createMiniGrid(cand.grid));
+                    candidatesWrapper.appendChild(candNode);
+                });
+                container.appendChild(candidatesWrapper);
+            }
+
+            // 3. Final Deduction
+            if (graph.deduction) {
+                const arrowDown2 = document.createElement("div");
+                arrowDown2.classList.add("state-arrow");
+                arrowDown2.innerText = "↓ LOGICAL CONCLUSION ↓";
+                container.appendChild(arrowDown2);
+
+                const decNode = document.createElement("div");
+                decNode.classList.add("state-node", "dec-node");
+                decNode.innerHTML = `<div class="state-label">${graph.deduction.label}</div>`;
+                decNode.appendChild(createMiniGrid(graph.deduction.grid));
+                container.appendChild(decNode);
+            }
+
+            // Auto-scroll to bottom
+            const graphContainer = document.getElementById("graph-container");
+            graphContainer.scrollTop = graphContainer.scrollHeight;
+        }
+
+        function showStatus(message, won) {
+            const overlay = document.getElementById("status-overlay");
+            const msgDiv = document.getElementById("status-message");
+            msgDiv.innerText = message;
+            overlay.className = "status-overlay " + (won ? "status-win" : "status-fail");
+        }
+
+        function updateSteps(steps) {
+            const stepsDiv = document.getElementById("steps");
+            stepsDiv.innerHTML = "";
+            steps.forEach(step => {
+                const item = document.createElement("div");
+                item.classList.add("step-item");
+
+                if (step.includes("SAFE")) item.classList.add("step-safe");
+                else if (step.includes("MINE")) item.classList.add("step-mine");
+                else if (step.includes("Guessing")) item.classList.add("step-guess");
+
+                item.innerText = "• " + step;
+                stepsDiv.appendChild(item);
+            });
+        }
+
+        async function newGame() {
+            gameOver = false;
+            autoPlaying = false;
+            document.getElementById("status-overlay").className = "status-overlay hidden";
+
+            const response = await fetch('/api/new_game', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ difficulty })
+            });
+            const data = await response.json();
+            gameId = data.game_id;
+            updateBoard(data.state);
+
+            const totalMines = difficulty === 'easy' ? 5 : (difficulty === 'medium' ? 10 : 15);
+            document.getElementById("mineCount").innerText = String(totalMines).padStart(2, '0');
+
+            timer = 0;
+            document.getElementById("timer").innerText = "000";
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timer = Math.min(timer + 1, 999);
+                document.getElementById("timer").innerText = String(timer).padStart(3, '0');
+            }, 1000);
+            document.getElementById("steps").innerHTML = "<i>AI waiting...</i>";
+            document.getElementById("state-visual").innerHTML = "";
+        }
+
+        async function aiMove() {
+            if (gameOver || !gameId) return;
+            const response = await fetch('/api/ai_move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ game_id: gameId })
+            });
+            const data = await response.json();
+            updateBoard(data.state);
+            updateSteps(data.graph_steps);
+            renderBranchingGraph(data.branching_graph);
+
+            let flagged = 0;
+            data.state.forEach(row => row.forEach(c => { if (c === 'F') flagged++ }));
+            const totalMines = difficulty === 'easy' ? 5 : (difficulty === 'medium' ? 10 : 15);
+            document.getElementById("mineCount").innerText = String(Math.max(0, totalMines - flagged)).padStart(2, '0');
+
+            if (data.game_over) {
+                gameOver = true;
+                autoPlaying = false;
+                clearInterval(timerInterval);
+                showStatus(data.won ? "AI SOLVED IT! 🎉" : "AI FAILED... 💣", data.won);
+            }
+        }
+
+        function autoPlay() {
+            if (gameOver || autoPlaying) return;
+            autoPlaying = true;
+            const loop = async () => {
+                if (!autoPlaying) return;
+                try {
+                    await aiMove();
+                } catch (e) {
+                    console.error("AI Loop Exception:", e);
+                }
+                if (!gameOver && autoPlaying) setTimeout(loop, 900);
+            };
+            loop();
+        }
+
+        function stopAuto() {
+            autoPlaying = false;
+        }
+
+        newGame();
+    </script>
+</body>
+
+</html>
